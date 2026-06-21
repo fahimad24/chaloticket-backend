@@ -2,6 +2,7 @@ const express = require('express');
 const app = express();
 const cors = require('cors');
 const { MongoClient, ServerApiVersion } = require('mongodb');
+const { ObjectId } = require('mongodb');
 require('dotenv').config();
 
 const PORT = process.env.PORT || 5000;
@@ -26,6 +27,24 @@ async function run() {
     try {
         const database = client.db('chaloticke');
         const ticketsCollection = database.collection('tickets');
+        // ========== All Get APIs ==========
+
+        // Get all tickets API
+        app.get('/api/tickets', async (req, res) => {
+            try {
+                const query = req?.query?.email;
+                console.log("Fetching tickets for email:", query); // ডিবাগিংয়ের জন্য লগ করা হচ্ছে
+                if (!query) {
+                    return res.status(400).json({ message: 'Email query parameter is required' });
+                }
+                const tickets = await ticketsCollection.find({ vendorEmail: query }).toArray();
+                console.log(tickets)
+                res.status(200).json(tickets);
+            } catch (error) {
+                console.error('Error fetching tickets:', error);
+                res.status(500).json({ message: 'Internal server error' });
+            }
+        });
 
         // ========== All Post APIs ==========
 
@@ -34,10 +53,29 @@ async function run() {
             try {
                 const ticketData = req.body;
                 const result = await ticketsCollection.insertOne(ticketData);
-                console.log('Ticket created with ID:', result.insertedId);
                 res.status(201).json({ message: 'Ticket created successfully', ticketId: result.insertedId });
             } catch (error) {
                 console.error('Error creating ticket:', error);
+                res.status(500).json({ message: 'Internal server error' });
+            }
+        });
+
+
+        // ========== All Delete APIs ==========
+
+        // vendor ticket delete API
+        app.delete('/api/tickets/:id', async (req, res) => {
+            try {
+                const ticketId = req.params.id;
+                console.log("Deleting ticket with ID:", ticketId); // ডিবাগিংয়ের জন্য লগ করা হচ্ছে
+                const result = await ticketsCollection.deleteOne({ _id: new ObjectId(ticketId) });
+                if (result.deletedCount === 1) {
+                    res.status(200).json({ message: 'Ticket deleted successfully' });
+                } else {
+                    res.status(404).json({ message: 'Ticket not found' });
+                }
+            } catch (error) {
+                console.error('Error deleting ticket:', error);
                 res.status(500).json({ message: 'Internal server error' });
             }
         });
