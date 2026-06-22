@@ -29,14 +29,15 @@ async function run() {
         const ticketsCollection = database.collection('tickets');
         // ========== All Get APIs ==========
 
-        // Get all tickets API
+        // Get only vendor all tickets API
         app.get('/api/tickets', async (req, res) => {
             try {
-                const query = req?.query?.email;
-                if (!query) {
-                    return res.status(400).json({ message: 'Email query parameter is required' });
+                const email = req?.query?.email;
+                let query = {};
+                if (email) {
+                    query = { vendorEmail: email };
                 }
-                const tickets = await ticketsCollection.find({ vendorEmail: query }).toArray();
+                const tickets = await ticketsCollection.find(query).toArray();
                 res.status(200).json(tickets);
             } catch (error) {
                 console.error('Error fetching tickets:', error);
