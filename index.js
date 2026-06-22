@@ -33,15 +33,29 @@ async function run() {
         app.get('/api/tickets', async (req, res) => {
             try {
                 const query = req?.query?.email;
-                console.log("Fetching tickets for email:", query); // ডিবাগিংয়ের জন্য লগ করা হচ্ছে
                 if (!query) {
                     return res.status(400).json({ message: 'Email query parameter is required' });
                 }
                 const tickets = await ticketsCollection.find({ vendorEmail: query }).toArray();
-                console.log(tickets)
                 res.status(200).json(tickets);
             } catch (error) {
                 console.error('Error fetching tickets:', error);
+                res.status(500).json({ message: 'Internal server error' });
+            }
+        });
+
+        // Get single ticket API
+        app.get('/api/tickets/:id', async (req, res) => {
+            try {
+                const ticketId = req.params.id;
+                const ticket = await ticketsCollection.findOne({ _id: new ObjectId(ticketId) });
+                if (ticket) {
+                    res.status(200).json(ticket);
+                } else {
+                    res.status(404).json({ message: 'Ticket not found' });
+                }
+            } catch (error) {
+                console.error('Error fetching ticket:', error);
                 res.status(500).json({ message: 'Internal server error' });
             }
         });
@@ -61,13 +75,36 @@ async function run() {
         });
 
 
+
+        // ========== All Update APIs ==========
+
+        // vendor ticket update API
+        app.patch('/api/tickets/:id', async (req, res) => {
+            try {
+                const ticketId = req.params.id;
+                const updatedData = req.body;
+                const result = await ticketsCollection.updateOne(
+                    { _id: new ObjectId(ticketId) },
+                    { $set: updatedData }
+                );
+                if (result.matchedCount === 1) {
+                    res.status(200).json({ message: 'Ticket updated successfully' });
+                } else {
+                    res.status(404).json({ message: 'Ticket not found' });
+                }
+            } catch (error) {
+                console.error('Error updating ticket:', error);
+                res.status(500).json({ message: 'Internal server error' });
+            }
+        });
+
+
         // ========== All Delete APIs ==========
 
         // vendor ticket delete API
         app.delete('/api/tickets/:id', async (req, res) => {
             try {
                 const ticketId = req.params.id;
-                console.log("Deleting ticket with ID:", ticketId); // ডিবাগিংয়ের জন্য লগ করা হচ্ছে
                 const result = await ticketsCollection.deleteOne({ _id: new ObjectId(ticketId) });
                 if (result.deletedCount === 1) {
                     res.status(200).json({ message: 'Ticket deleted successfully' });
