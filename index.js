@@ -29,6 +29,7 @@ async function run() {
         const usersDatabase = client.db('userInfo');
         const ticketsCollection = database.collection('tickets');
         const usersCollection = usersDatabase.collection('user');
+        const bookedTicketsCollection = database.collection('bookedTickets');
         // ========== All Get APIs ==========
 
         // Get only vendor all tickets API
@@ -140,6 +141,33 @@ async function run() {
                 }
             } catch (error) {
                 console.error('Error updating user role:', error);
+                res.status(500).json({ message: 'Internal server error' });
+            }
+        });
+
+
+        // user booked ticket post API
+        app.put('/api/tickets/booked/:id', async (req, res) => {
+            const ticketId = req.params.id;
+            const bookedTicketData = req.body.bookedData;
+            const { _id, quantity, price, ...restOfData } = bookedTicketData;
+            try {
+                const result = await bookedTicketsCollection.updateOne(
+                    { _id: new ObjectId(ticketId) },
+
+                    {
+                        $inc: {
+                            quantity: parseInt(bookedTicketData.quantity),
+                            price: parseFloat(bookedTicketData.price)
+                        },
+                        $set: restOfData
+                    },
+                    { upsert: true }
+                );
+                console.log("MongoDB Result:", result);
+                res.status(200).json({ message: 'Booked ticket updated successfully', bookedTicketId: result.upsertedId || ticketId });
+            } catch (error) {
+                console.error('Error updating booked ticket:', error);
                 res.status(500).json({ message: 'Internal server error' });
             }
         });
