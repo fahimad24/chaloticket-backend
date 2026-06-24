@@ -26,7 +26,9 @@ const client = new MongoClient(url, {
 async function run() {
     try {
         const database = client.db('chaloticke');
+        const usersDatabase = client.db('userInfo');
         const ticketsCollection = database.collection('tickets');
+        const usersCollection = usersDatabase.collection('user');
         // ========== All Get APIs ==========
 
         // Get only vendor all tickets API
@@ -57,6 +59,18 @@ async function run() {
                 }
             } catch (error) {
                 console.error('Error fetching ticket:', error);
+                res.status(500).json({ message: 'Internal server error' });
+            }
+        });
+
+        // Get all user Data API
+        app.get('/api/users', async (req, res) => {
+            try {
+
+                const users = await usersCollection.find({}).toArray();
+                res.status(200).json(users);
+            } catch (error) {
+                console.error('Error fetching users:', error);
                 res.status(500).json({ message: 'Internal server error' });
             }
         });
@@ -95,6 +109,26 @@ async function run() {
                 }
             } catch (error) {
                 console.error('Error updating ticket:', error);
+                res.status(500).json({ message: 'Internal server error' });
+            }
+        });
+
+        // make user role is admin, vendor, or user and if vendor is fraud.
+        app.patch('/api/users/:id', async (req, res) => {
+            try {
+                const userId = req.params.id;
+                const updatedData = req.body;
+                const result = await usersCollection.updateOne(
+                    { _id: new ObjectId(userId) },
+                    { $set: updatedData }
+                );
+                if (result.matchedCount === 1) {
+                    res.status(200).json({ message: 'User role updated successfully' });
+                } else {
+                    res.status(404).json({ message: 'User not found' });
+                }
+            } catch (error) {
+                console.error('Error updating user role:', error);
                 res.status(500).json({ message: 'Internal server error' });
             }
         });
