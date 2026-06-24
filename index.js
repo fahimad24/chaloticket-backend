@@ -35,9 +35,20 @@ async function run() {
         app.get('/api/tickets', async (req, res) => {
             try {
                 const email = req?.query?.email;
+                const status = req?.query?.
+                    verificationStatus;
+                const isAdvertisement = req?.query?.isAdvertised;
+
+
                 let query = {};
                 if (email) {
                     query = { vendorEmail: email };
+                }
+                if (status) {
+                    query = { verificationStatus: status };
+                }
+                if (isAdvertisement) {
+                    query = { isAdvertised: isAdvertisement === 'true' };
                 }
                 const tickets = await ticketsCollection.find(query).toArray();
                 res.status(200).json(tickets);
