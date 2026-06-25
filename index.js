@@ -4,9 +4,11 @@ const cors = require('cors');
 const { MongoClient, ServerApiVersion } = require('mongodb');
 const { ObjectId } = require('mongodb');
 require('dotenv').config();
+const { createRemoteJWKSet, jwtVerify } = require('jose-cjs');
 
 const PORT = process.env.PORT || 5000;
 const url = process.env.DATABASE_URL;
+const FRONTEND_URL = process.env.LOCAL_FRONTEND_URL;
 
 // Middleware
 app.use(cors());
@@ -20,6 +22,37 @@ const client = new MongoClient(url, {
         deprecationErrors: true,
     }
 });
+
+
+// ========== JWT Verification Middleware ==========
+console.log("FRONTEND_URL:", FRONTEND_URL);
+
+const JWKS = createRemoteJWKSet(
+    new URL(`${FRONTEND_URL}/api/auth/jwks`)
+);
+
+
+const verifyToken = async (req, res, next) => {
+    const authHeader = req?.headers?.authorization;
+
+    if (!authHeader) {
+        return res.status(401).json({ error: "Authorization access denied" });
+    }
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) {
+        return res.status(401).json({ error: "Authorization access denied" });
+    }
+
+
+    try {
+        const { payload } = await jwtVerify(token, JWKS,);
+        req.user = payload;
+        next();
+    } catch (error) {
+        return res.status(401).json({ error: "Forbidden" });
+    }
+
+};
 
 
 // Test MongoDB connection
@@ -76,7 +109,7 @@ async function run() {
         });
 
         // Get all user Data API
-        app.get('/api/users', async (req, res) => {
+        app.get('/api/users', verifyToken, async (req, res) => {
             try {
 
                 const users = await usersCollection.find({}).toArray();
@@ -88,7 +121,7 @@ async function run() {
         });
 
         // Get user booked all tickets API
-        app.get('/api/booked-tickets/:userId', async (req, res) => {
+        app.get('/api/booked-tickets/:userId', verifyToken, async (req, res) => {
             try {
                 const userId = req.params.userId;
 
@@ -105,7 +138,7 @@ async function run() {
         });
 
         //  booking request for vendor API
-        app.get('/api/booked-tickets/vendor/:vendorId', async (req, res) => {
+        app.get('/api/booked-tickets/vendor/:vendorId', verifyToken, async (req, res) => {
             try {
                 const vendorId = req.params.vendorId;
 
@@ -124,7 +157,7 @@ async function run() {
         // ========== All Post APIs ==========
 
         // vendor ticket post API
-        app.post('/api/tickets', async (req, res) => {
+        app.post('/api/tickets', verifyToken, async (req, res) => {
             try {
                 const ticketData = req.body;
                 const result = await ticketsCollection.insertOne(ticketData);
@@ -140,13 +173,17 @@ async function run() {
         // ========== All Update APIs ==========
 
         // vendor ticket update API
-        app.patch('/api/tickets/:id', async (req, res) => {
+        app.patch('/api/tickets/:id', verifyToken, async (req, res) => {
             try {
                 const ticketId = req.params.id;
                 const updatedData = req.body;
+                const { quantity, ...restOfData } = updatedData;
                 const result = await ticketsCollection.updateOne(
                     { _id: new ObjectId(ticketId) },
-                    { $set: updatedData }
+                    {
+                        $set: restOfData,
+                        $inc: { quantity: quantity ? parseInt(quantity) : 0 }
+                    }
                 );
                 if (result.matchedCount === 1) {
                     res.status(200).json({ message: 'Ticket updated successfully' });
@@ -160,7 +197,7 @@ async function run() {
         });
 
         // make user role is admin, vendor, or user and if vendor is fraud.
-        app.patch('/api/users/:id', async (req, res) => {
+        app.patch('/api/users/:id', verifyToken, async (req, res) => {
             try {
                 const userId = req.params.id;
                 const updatedData = req.body;
@@ -181,7 +218,7 @@ async function run() {
 
 
         // user booked ticket post API
-        app.put('/api/tickets/booked/:id', async (req, res) => {
+        app.put('/api/tickets/booked/:id', verifyToken, async (req, res) => {
             const ticketId = req.params.id;
             const bookedTicketData = req.body.bookedData;
             const { _id, quantity, price, ...restOfData } = bookedTicketData;
@@ -207,7 +244,7 @@ async function run() {
         });
 
         // user booked ticket status update 
-        app.patch('/api/tickets/booked/:id', async (req, res) => {
+        app.patch('/api/tickets/booked/:id', verifyToken, async (req, res) => {
             try {
                 const ticketId = req.params.id;
                 const { status } = req.body;
@@ -229,7 +266,7 @@ async function run() {
         // ========== All Delete APIs ==========
 
         // vendor ticket delete API
-        app.delete('/api/tickets/:id', async (req, res) => {
+        app.delete('/api/tickets/:id', verifyToken, async (req, res) => {
             try {
                 const ticketId = req.params.id;
                 const result = await ticketsCollection.deleteOne({ _id: new ObjectId(ticketId) });
