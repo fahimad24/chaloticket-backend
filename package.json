@@ -1,6 +1,7 @@
 {
   "name": "chaloticke-backend",
   "version": "1.0.0",
+  "packageManager": "pnpm@11.8.0",
   "description": "",
   "main": "index.js",
   "scripts": {
