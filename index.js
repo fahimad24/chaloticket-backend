@@ -206,6 +206,25 @@ async function run() {
             }
         });
 
+        // user booked ticket status update 
+        app.patch('/api/tickets/booked/:id', async (req, res) => {
+            try {
+                const ticketId = req.params.id;
+                const { status } = req.body;
+                const result = await bookedTicketsCollection.updateOne(
+                    { _id: new ObjectId(ticketId) },
+                    { $set: { status } }
+                );
+                if (result.matchedCount === 1) {
+                    res.status(200).json({ message: 'Booked ticket status updated successfully' });
+                } else {
+                    res.status(404).json({ message: 'Booked ticket not found' });
+                }
+            } catch (error) {
+                console.error('Error updating booked ticket status:', error);
+                res.status(500).json({ message: 'Internal server error' });
+            }
+        });
 
         // ========== All Delete APIs ==========
 
