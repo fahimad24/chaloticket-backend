@@ -87,6 +87,40 @@ async function run() {
             }
         });
 
+        // Get user booked all tickets API
+        app.get('/api/booked-tickets/:userId', async (req, res) => {
+            try {
+                const userId = req.params.userId;
+
+                const bookedTickets = await bookedTicketsCollection.find({ userId: userId }).toArray();
+                if (bookedTickets && bookedTickets.length > 0) {
+                    return res.status(200).json(bookedTickets);
+                } else {
+                    return res.status(404).json({ message: 'Booked tickets not found' });
+                }
+            } catch (error) {
+                console.error('Error fetching booked ticket:', error);
+                res.status(500).json({ message: 'Internal server error' });
+            }
+        });
+
+        //  booking request for vendor API
+        app.get('/api/booked-tickets/vendor/:vendorId', async (req, res) => {
+            try {
+                const vendorId = req.params.vendorId;
+
+                const bookedTickets = await bookedTicketsCollection.find({ vendorId: vendorId }).toArray();
+                if (bookedTickets && bookedTickets.length > 0) {
+                    return res.status(200).json(bookedTickets);
+                } else {
+                    return res.status(404).json({ message: 'Booked tickets not found' });
+                }
+            } catch (error) {
+                console.error('Error fetching booked ticket:', error);
+                res.status(500).json({ message: 'Internal server error' });
+            }
+        });
+
         // ========== All Post APIs ==========
 
         // vendor ticket post API
