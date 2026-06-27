@@ -302,8 +302,8 @@ async function run() {
         app.get('/api/booked-tickets/:userId', verifyToken, async (req, res) => {
             try {
                 const userId = req.params.userId;
-
-                const bookedTickets = await bookedTicketsCollection.find({ userId: userId }).toArray();
+                const quary = { userId: userId };
+                const bookedTickets = await bookedTicketsCollection.find(quary).toArray();
                 if (bookedTickets && bookedTickets.length > 0) {
                     return res.status(200).json(bookedTickets);
                 } else {
