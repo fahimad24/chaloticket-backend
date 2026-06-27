@@ -5,6 +5,7 @@ const { MongoClient, ServerApiVersion } = require('mongodb');
 const { ObjectId } = require('mongodb');
 require('dotenv').config();
 const { createRemoteJWKSet, jwtVerify } = require('jose-cjs');
+const { default: axios } = require('axios');
 
 const PORT = process.env.PORT || 5000;
 const url = process.env.DATABASE_URL;
@@ -30,7 +31,6 @@ console.log("FRONTEND_URL:", FRONTEND_URL);
 const JWKS = createRemoteJWKSet(
     new URL(`${FRONTEND_URL}/api/auth/jwks`)
 );
-
 
 const verifyToken = async (req, res, next) => {
     const authHeader = req?.headers?.authorization;
@@ -64,6 +64,184 @@ async function run() {
         const usersCollection = usersDatabase.collection('user');
         const bookedTicketsCollection = database.collection('bookedTickets');
         // ========== All Get APIs ==========
+
+        app.get("/api/tickets/total-qty", verifyToken, async (req, res) => {
+            try {
+                const ticketResult = await ticketsCollection.aggregate([
+                    {
+                        $group: {
+                            _id: null,
+                            totalQty: { $sum: "$quantity" }
+                        }
+                    }
+                ]).toArray();
+                const bookedTicketResult = await bookedTicketsCollection.aggregate([{
+                    $match: {
+                        status: { $in: ["pending", "accepted", "paid"] }
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalQty: { $sum: "$quantity" }
+                    }
+                }
+                ]).toArray();
+
+                const ticketTotalQty = ticketResult[0]?.totalQty || 0;
+                const bookedTicketTotalQty = bookedTicketResult[0]?.totalQty || 0;
+
+                res.send({
+                    ticketTotalQty: ticketTotalQty + bookedTicketTotalQty,
+                });
+            } catch (error) {
+                res.status(500).send({ error: error.message });
+            }
+        });
+
+        // Get total tickets sold API
+        app.get("/api/tickets/total-sold", verifyToken, async (req, res) => {
+            try {
+                const result = await bookedTicketsCollection.aggregate([
+                    {
+                        $match: {
+                            status: { $in: ["paid"] }
+                        }
+                    },
+                    {
+                        $group: {
+                            _id: null,
+                            totalTicketsSold: { $sum: "$quantity" }
+                        }
+                    }
+                ]).toArray();
+
+                const totalTicketsSold = result[0]?.totalTicketsSold || 0;
+                res.send({ totalTicketsSold });
+            } catch (error) {
+                res.status(500).send({ error: error.message });
+            }
+        });
+
+        // Get total revenue API
+        app.get("/api/tickets/total-revenue", verifyToken, async (req, res) => {
+            try {
+                const result = await bookedTicketsCollection.aggregate([
+                    {
+                        $match: {
+                            status: { $in: ["paid"] }
+                        }
+                    },
+                    {
+                        $group: {
+                            _id: null,
+                            totalRevenue: { $sum: "$price" }
+                        }
+                    }
+                ]).toArray();
+
+                const totalRevenue = result[0]?.totalRevenue || 0;
+                res.send({ totalRevenue });
+            } catch (error) {
+                res.status(500).send({ error: error.message });
+            }
+        });
+
+        // Get monthly report API
+        app.get("/api/monthly-report", verifyToken, async (req, res) => {
+            try {
+                const report = await bookedTicketsCollection.aggregate([
+                    {
+                        $group: {
+                            _id: {
+                                month: {
+                                    $dateToString: {
+                                        format: "%b",
+                                        date: { $toDate: "$bookedAt" }
+                                    }
+                                }
+                            },
+
+                            // Total quantity added
+                            ticketsAdded: {
+                                $sum: "$quantity"
+                            },
+
+                            // Sold tickets (accepted/paid)
+                            ticketsSold: {
+                                $sum: {
+                                    $cond: [
+                                        { $in: ["$status", ["paid"]] },
+                                        "$quantity",
+                                        0
+                                    ]
+                                }
+                            },
+
+                            // Revenue
+                            revenue: {
+                                $sum: {
+                                    $cond: [
+                                        { $in: ["$status", ["paid"]] },
+                                        "$price",
+                                        0
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    {
+                        $project: {
+                            _id: 0,
+                            month: "$_id.month",
+                            ticketsAdded: 1,
+                            ticketsSold: 1,
+                            revenue: 1
+                        }
+                    }
+                ]).toArray();
+
+                res.status(200).json(report);
+            } catch (error) {
+                console.error("Error generating monthly report:", error);
+                res.status(500).json({
+                    message: "Internal Server Error"
+                });
+            }
+        });
+
+        // get tickets search API
+        app.get("/api/tickets-search", async (req, res) => {
+            try {
+                const { from, to, transportType, sort } = req.query;
+                console.log("Received search parameters:", { from, to, transportType, sort });
+
+                let query = { verificationStatus: "approved" };
+
+                if (from) {
+                    query.from = { $regex: from, $options: "i" };
+                }
+                if (to) {
+                    query.to = { $regex: to, $options: "i" };
+                }
+                if (transportType && transportType !== "all") {
+                    query.transportType = { $regex: `^${transportType}$`, $options: "i" };
+                }
+
+                let sortOptions = {};
+                if (sort === "price_asc") {
+                    sortOptions.price = 1;
+                } else if (sort === "price_desc") {
+                    sortOptions.price = -1;
+                }
+
+                const tickets = await ticketsCollection.find(query).sort(sortOptions).toArray();
+
+                res.status(200).json(tickets);
+            } catch (error) {
+                res.status(500).json({ message: "Server Error", error: error.message });
+            }
+        });
 
         // Get only vendor all tickets API
         app.get('/api/tickets', async (req, res) => {
@@ -161,6 +339,14 @@ async function run() {
             try {
                 const ticketData = req.body;
                 const result = await ticketsCollection.insertOne(ticketData);
+                if (!result.acknowledged) {
+                    return res.status(500).json({ message: 'Failed to create ticket' });
+                }
+                if (result.acknowledged) {
+                    axios.post(`${FRONTEND_URL}/api/revalidate`, { action: "added-ticket" }).catch((error) => {
+                        console.error("Error revalidating cache:", error);
+                    });
+                }
                 res.status(201).json({ message: 'Ticket created successfully', ticketId: result.insertedId });
             } catch (error) {
                 console.error('Error creating ticket:', error);
@@ -185,11 +371,34 @@ async function run() {
                         $inc: { quantity: quantity ? parseInt(quantity) : 0 }
                     }
                 );
+
+                if (result.matchedCount === 1 && "isAdvertised" in updatedData) {
+                    axios.post(`${FRONTEND_URL}/api/revalidate`, { isAdvertised: "isAdvertised" }).catch((error) => {
+                        console.error("Error revalidating cache:", error);
+                    });
+                    res.status(200).json({ message: 'Ticket updated and advertised successfully' });
+                } else {
+                    res.status(404).json({ message: 'Ticket not found' });
+                }
+                if (result.matchedCount === 1 && "verificationStatus" in updatedData) {
+                    axios.post(`${FRONTEND_URL}/api/revalidate`, { verificationStatus: "success" }).catch((error) => {
+                        console.error("Error revalidating cache:", error);
+                    });
+                    res.status(200).json({ message: 'Ticket updated and verified successfully' });
+                } else {
+                    res.status(404).json({ message: 'Ticket not found' });
+                }
+
+
                 if (result.matchedCount === 1) {
+                    axios.post(`${FRONTEND_URL}/api/revalidate`, { ticketUpdated: "ticket-updated" }).catch((error) => {
+                        console.error("Error revalidating cache:", error);
+                    });
                     res.status(200).json({ message: 'Ticket updated successfully' });
                 } else {
                     res.status(404).json({ message: 'Ticket not found' });
                 }
+                return res.status(200).json({ message: 'Ticket updated and verified successfully' });
             } catch (error) {
                 console.error('Error updating ticket:', error);
                 res.status(500).json({ message: 'Internal server error' });
@@ -271,6 +480,9 @@ async function run() {
                 const ticketId = req.params.id;
                 const result = await ticketsCollection.deleteOne({ _id: new ObjectId(ticketId) });
                 if (result.deletedCount === 1) {
+                    axios.post(`${FRONTEND_URL}/api/revalidate`, { deleteTicket: "delete-ticket" }).catch((error) => {
+                        console.error("Error revalidating cache:", error);
+                    });
                     res.status(200).json({ message: 'Ticket deleted successfully' });
                 } else {
                     res.status(404).json({ message: 'Ticket not found' });
