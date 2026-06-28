@@ -26,7 +26,6 @@ const client = new MongoClient(url, {
 
 
 // ========== JWT Verification Middleware ==========
-console.log("FRONTEND_URL:", FRONTEND_URL);
 
 const JWKS = createRemoteJWKSet(
     new URL(`${FRONTEND_URL}/api/auth/jwks`)
@@ -241,7 +240,6 @@ async function run() {
         app.get("/api/tickets-search", async (req, res) => {
             try {
                 const { from, to, transportType, sort } = req.query;
-                console.log("Received search parameters:", { from, to, transportType, sort });
 
                 let query = { verificationStatus: "approved" };
 
@@ -471,7 +469,6 @@ async function run() {
                     },
                     { upsert: true }
                 );
-                console.log("MongoDB Result:", result);
                 res.status(200).json({ message: 'Booked ticket updated successfully', bookedTicketId: result.upsertedId || ticketId });
             } catch (error) {
                 console.error('Error updating booked ticket:', error);
