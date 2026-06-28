@@ -111,13 +111,21 @@ async function run() {
                     {
                         $group: {
                             _id: null,
-                            totalTicketsSold: { $sum: "$quantity" }
+                            totalTicketsSold: { $sum: "$quantity" },
+                            tickets: {
+                                $push: {
+                                    title: "$title",
+                                    sales: "$price",
+                                    type: "$transportType",
+                                    seats: "$quantity"
+                                }
+                            }
                         }
                     }
                 ]).toArray();
 
                 const totalTicketsSold = result[0]?.totalTicketsSold || 0;
-                res.send({ totalTicketsSold });
+                res.send({ totalTicketsSold, tickets: result[0]?.tickets || [] });
             } catch (error) {
                 res.status(500).send({ error: error.message });
             }
