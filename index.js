@@ -65,9 +65,16 @@ async function run() {
         const bookedTicketsCollection = database.collection('bookedTickets');
         // ========== All Get APIs ==========
 
-        app.get("/api/tickets/total-qty", verifyToken, async (req, res) => {
+        app.get("/api/tickets/total-qty/:userId", verifyToken, async (req, res) => {
             try {
+                const userId = req.params.userId;
                 const ticketResult = await ticketsCollection.aggregate([
+                    {
+                        $match: {
+                            vendorId: userId,
+                            verificationStatus: "approved",
+                        }
+                    },
                     {
                         $group: {
                             _id: null,
@@ -76,7 +83,9 @@ async function run() {
                     }
                 ]).toArray();
                 const bookedTicketResult = await bookedTicketsCollection.aggregate([{
+
                     $match: {
+                        vendorId: userId,
                         status: { $in: ["pending", "accepted", "paid"] }
                     }
                 },
@@ -100,11 +109,13 @@ async function run() {
         });
 
         // Get total tickets sold API
-        app.get("/api/tickets/total-sold", verifyToken, async (req, res) => {
+        app.get("/api/tickets/total-sold/:userId", verifyToken, async (req, res) => {
             try {
+                const userId = req.params.userId;
                 const result = await bookedTicketsCollection.aggregate([
                     {
                         $match: {
+                            vendorId: userId,
                             status: { $in: ["paid"] }
                         }
                     },
@@ -132,11 +143,13 @@ async function run() {
         });
 
         // Get total revenue API
-        app.get("/api/tickets/total-revenue", verifyToken, async (req, res) => {
+        app.get("/api/tickets/total-revenue/:userId", verifyToken, async (req, res) => {
             try {
+                const userId = req.params.userId;
                 const result = await bookedTicketsCollection.aggregate([
                     {
                         $match: {
+                            vendorId: userId,
                             status: { $in: ["paid"] }
                         }
                     },
@@ -156,9 +169,15 @@ async function run() {
         });
 
         // Get monthly report API
-        app.get("/api/monthly-report", verifyToken, async (req, res) => {
+        app.get("/api/monthly-report/:userId", verifyToken, async (req, res) => {
             try {
+                const userId = req.params.userId;
                 const report = await bookedTicketsCollection.aggregate([
+                    {
+                        $match: {
+                            vendorId: userId
+                        }
+                    },
                     {
                         $group: {
                             _id: {
