@@ -26,6 +26,7 @@ const client = new MongoClient(url, {
 
 
 // ========== JWT Verification Middleware ==========
+console.log("FRONTEND_URL:", FRONTEND_URL);
 
 const JWKS = createRemoteJWKSet(
     new URL(`${FRONTEND_URL}/api/auth/jwks`)
@@ -240,6 +241,7 @@ async function run() {
         app.get("/api/tickets-search", async (req, res) => {
             try {
                 const { from, to, transportType, sort } = req.query;
+                console.log("Received search parameters:", { from, to, transportType, sort });
 
                 let query = { verificationStatus: "approved" };
 
@@ -275,8 +277,6 @@ async function run() {
                 const status = req?.query?.
                     verificationStatus;
                 const isAdvertisement = req?.query?.isAdvertised;
-
-
                 let query = {};
                 if (email) {
                     query = { vendorEmail: email };
@@ -388,42 +388,43 @@ async function run() {
             try {
                 const ticketId = req.params.id;
                 const updatedData = req.body;
-                const { quantity, ...restOfData } = updatedData;
+                const updateQuery = {
+                    $set: updatedData,
+                };
+
+                if (updatedData.state === "rejected") {
+                    updateQuery.$inc = { quantity: parseInt(updatedData.quantity, 10) || 1 };
+                    delete updatedData.quantity;
+                    delete updatedData.state;
+                }
+
                 const result = await ticketsCollection.updateOne(
                     { _id: new ObjectId(ticketId) },
-                    {
-                        $set: restOfData,
-                        $inc: { quantity: quantity ? parseInt(quantity) : 0 }
-                    }
+                    updateQuery
                 );
 
                 if (result.matchedCount === 1 && "isAdvertised" in updatedData) {
                     axios.post(`${FRONTEND_URL}/api/revalidate`, { isAdvertised: "isAdvertised" }).catch((error) => {
                         console.error("Error revalidating cache:", error);
                     });
-                    res.status(200).json({ message: 'Ticket updated and advertised successfully' });
-                } else {
-                    res.status(404).json({ message: 'Ticket not found' });
-                }
-                if (result.matchedCount === 1 && "verificationStatus" in updatedData) {
+                    return res.status(200).json({ message: 'Ticket updated and advertised successfully' });
+
+                } else if (result.matchedCount === 1 && "verificationStatus" in updatedData) {
                     axios.post(`${FRONTEND_URL}/api/revalidate`, { verificationStatus: "success" }).catch((error) => {
                         console.error("Error revalidating cache:", error);
                     });
-                    res.status(200).json({ message: 'Ticket updated and verified successfully' });
-                } else {
-                    res.status(404).json({ message: 'Ticket not found' });
-                }
+                    return res.status(200).json({ message: 'Ticket updated and verified successfully' });
 
-
-                if (result.matchedCount === 1) {
+                } else if (result.matchedCount === 1) {
                     axios.post(`${FRONTEND_URL}/api/revalidate`, { ticketUpdated: "ticket-updated" }).catch((error) => {
                         console.error("Error revalidating cache:", error);
                     });
-                    res.status(200).json({ message: 'Ticket updated successfully' });
+                    return res.status(200).json({ message: 'Ticket updated successfully' });
+
                 } else {
-                    res.status(404).json({ message: 'Ticket not found' });
+                    return res.status(404).json({ message: 'Ticket not found' });
                 }
-                return res.status(200).json({ message: 'Ticket updated and verified successfully' });
+
             } catch (error) {
                 console.error('Error updating ticket:', error);
                 res.status(500).json({ message: 'Internal server error' });
@@ -452,24 +453,21 @@ async function run() {
 
 
         // user booked ticket post API
-        app.put('/api/tickets/booked/:id', verifyToken, async (req, res) => {
-            const ticketId = req.params.id;
+        app.post('/api/tickets/booked', verifyToken, async (req, res) => {
             const bookedTicketData = req.body.bookedData;
-            const { _id, quantity, price, ...restOfData } = bookedTicketData;
+            delete bookedTicketData._id;
             try {
-                const result = await bookedTicketsCollection.updateOne(
-                    { _id: new ObjectId(ticketId) },
+                const result = await bookedTicketsCollection.insertOne(bookedTicketData);
+                if (!result.acknowledged) {
+                    return res.status(500).json({ message: 'Failed to book ticket' });
+                }
+                if (result.acknowledged) {
+                    axios.post(`${FRONTEND_URL}/api/revalidate`, { ticketBooked: "ticket-Booked" }).catch((error) => {
+                        console.error("Error revalidating cache:", error);
+                    });
+                }
+                res.status(201).json({ message: 'Ticket booked successfully', bookedTicketId: result.insertedId });
 
-                    {
-                        $inc: {
-                            quantity: parseInt(bookedTicketData.quantity),
-                            price: parseFloat(bookedTicketData.price)
-                        },
-                        $set: restOfData
-                    },
-                    { upsert: true }
-                );
-                res.status(200).json({ message: 'Booked ticket updated successfully', bookedTicketId: result.upsertedId || ticketId });
             } catch (error) {
                 console.error('Error updating booked ticket:', error);
                 res.status(500).json({ message: 'Internal server error' });
